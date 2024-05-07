@@ -9,18 +9,15 @@ import platform
 
 VULN_RE = re.compile(r'Vulnerability #(\d+):')
 
-pwd = os.getcwd()
 source_dir = os.getenv("SOURCE_DIR")
-# export
 system = platform.system()
-tool_bin = ""
+pwd = os.getcwd()
 if system == "Linux":
-    tool_bin = pwd + r'/tool/linux/govulncheck'
+    tool_bin = pwd + r'/tool/linux/bin/govulncheck'
 elif system == "Darwin":
-    too_bin = pwd + r'/tool/mac/govulncheck'
+    tool_bin = pwd + r'/tool/mac/bin/govulncheck'
 else:
     raise "未支持的平台或者无法识别的平台"
-
 
 def get_task_params():
     """
@@ -39,9 +36,8 @@ class Invocation(object):
     def scan_path(self):
         mod_path = []
         for dirpath, dirs, filenames in os.walk(source_dir):
-            for i in dirs:
-                if os.path.exists(os.path.join(dirpath, i, "go.mod")):
-                    mod_path.append(os.path.join(dirpath, i))
+            if os.path.exists(os.path.join(dirpath, "go.mod")):
+                mod_path.append(dirpath)
         if not mod_path:
             # 没有发现gomod 的情况下默认使用根目录检查
             mod_path = [source_dir]
@@ -55,53 +51,50 @@ class Invocation(object):
         return mod_path
 
     def set_go(self):
+        go_home = os.environ.get("GO_1_21_8_HOME", None)
+        if not go_home:
+            return
         if system == "Linux":
-            path = os.environ['PATH']
-            os.environ['GOROOT'] = pwd + r'/tool/linux/go-1.21.0'
-            if os.getenv("GOPATH"):
-                print("GOPATH : ", os.getenv("GOPATH"))
-            else:
-                os.environ['GOPATH'] = pwd + r'/tool/linux/gopath'
-                print("GOPATH : ", os.getenv("GOPATH"))
-            os.environ['GOBIN'] = pwd + r'/tool/linux/gopath/bin'
-            os.environ['PATH'] = pwd + r'/tool/linux/go-1.21.0/bin:' + pwd + r'/tool/linux/gopath/bin:' + path
-            print("GOPROXY : ", os.getenv("GOPROXY"))
+            path = os.environ["PATH"]
+            os.environ['PATH'] = go_home + r'/bin:' + path
+            os.environ["GOROOT"] = go_home
+            os.environ["GOPATH"] = go_home + r"/go"
+            print("使用内置的go环境")
             print("GOROOT : ", os.getenv("GOROOT"))
-            print("GOBIN : ", os.getenv("GOBIN"))
-            print("PATH : ", os.getenv("PATH"))
-            
+            print("GOPATH : ", os.getenv("GOPATH"))
+            print("GOPROXY : ", os.getenv("GOPROXY"))  
 
     def check(self):
         """
         检查工具在当前机器环境下是否可用
         """
+        go_version = "0"
+        check_go = ['go', 'version']
+        go_outfile = tempfile.TemporaryFile()
+        try:
+            go_process = subprocess.Popen(check_go,
+                                          stdout=go_outfile,
+                                          stderr=subprocess.STDOUT,
+                                          shell=False)
+            go_process.wait()
+            go_outfile.seek(0)
+            go_output = go_outfile.read().decode("utf-8")
+            go_line = go_output.splitlines()[0]
+            pattern = r"go(\d+\.\d+)"
+            match = re.search(pattern, go_line)
+            if match:
+                version = match.group(1)
+                go_version = version
+                print("环境中go version : %s", go_version)
+        except Exception as err:
+            print("解析go version失败 : %s", str(err))
+            go_version = "0"
         model = os.environ.get("GOVULNCHECK_MODEL", "auto")
-        if model.lower() == "auto":
-            check_go = ['go', 'version']
-            go_outfile = tempfile.TemporaryFile()
-            try:
-                go_process = subprocess.Popen(check_go,
-                                              stdout=go_outfile,
-                                              stderr=subprocess.STDOUT,
-                                              shell=False)
-                go_process.wait()
-                go_outfile.seek(0)
-                go_output = go_outfile.read().decode("utf-8")
-                go_line = go_output.splitlines()[0]
-                print(go_line)
-                pattern = r"go(\d+\.\d+)"
-                match = re.search(pattern, go_line)
-                if match:
-                    version = match.group(1)
-                    if float(version) < 1.21:
-                        self.set_go()
-                else:
-                    self.set_go()
-            except:
-                self.set_go()
+        if model.lower() == "auto" and go_version == "0":
+            self.set_go()
         elif model.lower() == "off":
             self.set_go()
-        check_cmd_args = ["govulncheck", "-version"]
+        check_cmd_args = [tool_bin, "-version"]
         check_outfile = tempfile.TemporaryFile()
         check_process = subprocess.Popen(check_cmd_args,
                                          stdout=check_outfile,
@@ -145,15 +138,13 @@ class Invocation(object):
     def run(self):
         pos = len(source_dir) + 1
         issues = []
-        incr_scan = self.params["incr_scan"]
-        diff_env = os.environ.get("DIFF_FILES", None)
-        scan_cmd = "govulncheck ./..."
+        scan_cmd = [tool_bin, "./..."]
         print("scan_cmd : ", scan_cmd)
         scan_path = self.scan_path()
         for cwd in scan_path:
             print("govunlncheck 将会分析目录 : ", cwd)
             outfile = tempfile.TemporaryFile()
-            process = subprocess.Popen(scan_cmd, cwd=cwd, stdout=outfile, stderr=subprocess.STDOUT, shell=True)
+            process = subprocess.Popen(scan_cmd, cwd=cwd, stdout=outfile, stderr=subprocess.STDOUT, shell=False)
             process.wait()
             outfile.seek(0)
             try:
@@ -180,9 +171,9 @@ class Invocation(object):
 if __name__ == '__main__':
     print("--- start tool ---")
     params = get_task_params()
-    tool = Invocation(params)
+    govulncheck = Invocation(params)
     print("--- check tool ---")
-    tool.check()
+    govulncheck.check()
     print("--- run tool ---")
-    tool.run()
+    govulncheck.run()
     print("--- end tool ---")
