@@ -85,9 +85,9 @@ class Invocation(object):
             if match:
                 version = match.group(1)
                 go_version = version
-                print("环境中go version : %s", go_version)
+                print("环境中go version : %s" % go_version)
         except Exception as err:
-            print("解析go version失败 : %s", str(err))
+            print("解析go version失败 : %s" % str(err))
             go_version = "0"
         model = os.environ.get("GOVULNCHECK_MODEL", "auto")
         if model.lower() == "auto" and go_version == "0":
