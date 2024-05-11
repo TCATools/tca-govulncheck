@@ -145,6 +145,12 @@ class Invocation(object):
             print("govunlncheck 将会分析目录 : ", cwd)
             outfile = tempfile.TemporaryFile()
             process = subprocess.Popen(scan_cmd, cwd=cwd, stdout=outfile, stderr=subprocess.STDOUT, shell=False)
+            try:
+                outtime = os.environ.get("GOVULNCHECK_TIMEOUT", "600")
+                process.wait(timeout=int(outtime))
+            except subprocess.TimeoutExpired:
+                print("timeout")
+                process.kill()
             process.wait()
             outfile.seek(0)
             try:
