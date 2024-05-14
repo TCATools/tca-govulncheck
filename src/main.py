@@ -13,9 +13,11 @@ source_dir = os.getenv("SOURCE_DIR")
 system = platform.system()
 pwd = os.getcwd()
 if system == "Linux":
-    tool_bin = pwd + r'/tool/linux/bin/govulncheck'
+    tool_bin = os.path.join(pwd, "tool", "linux", "bin", "govulncheck")
 elif system == "Darwin":
-    tool_bin = pwd + r'/tool/mac/bin/govulncheck'
+    tool_bin = os.path.join(pwd, "tool", "mac", "bin", "govulncheck")
+elif system == "Windows":
+    tool_bin = os.path.join(pwd, "tool", "win", "bin", "govulncheck.exe")
 else:
     raise "未支持的平台或者无法识别的平台"
 
@@ -54,15 +56,16 @@ class Invocation(object):
         go_home = os.environ.get("GO_1_21_8_HOME", None)
         if not go_home:
             return
-        if system == "Linux":
-            path = os.environ["PATH"]
-            os.environ['PATH'] = go_home + r'/bin:' + path
-            os.environ["GOROOT"] = go_home
-            os.environ["GOPATH"] = go_home + r"/go"
-            print("使用内置的go环境")
-            print("GOROOT : ", os.getenv("GOROOT"))
-            print("GOPATH : ", os.getenv("GOPATH"))
-            print("GOPROXY : ", os.getenv("GOPROXY"))  
+        print("使用内置的go环境")
+        path = os.environ["PATH"]
+        os.environ['PATH'] =  path + os.pathsep + os.path.join(go_home, "bin")
+        os.environ["GOROOT"] = go_home
+        os.environ["GOPATH"] = os.path.join(go_home, "go")
+        print("PATH : ", os.getenv("PATH"))
+        print("GOROOT : ", os.getenv("GOROOT"))
+        print("GOPATH : ", os.getenv("GOPATH"))
+        print("GOPROXY : ", os.getenv("GOPROXY"))
+        print("GOCACHE : ", os.getenv("GOCACHE"))
 
     def check(self):
         """
