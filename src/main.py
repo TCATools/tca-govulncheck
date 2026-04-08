@@ -81,7 +81,7 @@ class Govulncheck():
         return issues
 
     def __get_scan_path(self) -> list:
-        relpos = len(SOURCE_DIR)
+        relpos = len(SOURCE_DIR) + 1
         mods = []
         for dirpath, _, _ in os.walk(SOURCE_DIR):
             if os.path.exists(os.path.join(dirpath, "go.mod")):
@@ -89,14 +89,21 @@ class Govulncheck():
         if not mods:
             # 没有发现gomod 的情况下默认使用根目录检查
             return [SOURCE_DIR]
-            
-        re_path_exclude = self.params["path_filters"].get("re_exclusion", [])
+        re_path_include = self.params["path_filters"].get("re_inclusion", [])
+        re_path_exclude = self.params["path_filters"].get("re_exclusion", ["vendors/.*", ".*/vendors/.*"])
+        re_inc = "|".join(re_path_include)
         re_exp = "|".join(re_path_exclude)
-        re_compile = re.compile(re_exp)
+        re_inc_compile = re.compile(re_inc) if re_inc else None
+        re_exp_compile = re.compile(re_exp)
         mod_dirs = []
         for mod in mods:
-            rel_mod = mod[relpos:]
-            if not re_compile.fullmatch(rel_mod):
+            rel_mod = mod[relpos:] + os.path.sep + "go.mod"
+            if re_exp_compile.fullmatch(rel_mod):
+                continue
+            if re_inc_compile:
+                if re_inc_compile.fullmatch(rel_mod):
+                    mod_dirs.append(mod)
+            else:
                 mod_dirs.append(mod)
         return mod_dirs
 
@@ -108,21 +115,16 @@ class Govulncheck():
         db_path = os.path.join(PWD, "vulndb")
         scan_cmd = [self.tool, "-db", f"file://{db_path}"]
         mod_dirs = self.__get_scan_path()
-        multi_mods = os.environ.get("MULTIMODS", "false")
-        if multi_mods.lower() != "true":
-            mod_dirs = [SOURCE_DIR]
+        print("go mod dirs: " + " ".join(mod_dirs))
         scan_path = self.params.get("scan_path", "/")
         scan_go_pattern = ["./..."]
         # 设置了扫描目录
         if scan_path != "/":
-            if multi_mods.lower() == "true":
+            # 根据 scan_path 下是否存在 go.mod 来决定是include目录还是子模块
+            if os.path.exists(os.path.join(SOURCE_DIR, scan_path, "go.mod")):
                 mod_dirs = [os.path.join(SOURCE_DIR, scan_path)]
             else:
-                # 根据 scan_path 下是否存在 go.mod 来决定是include目录还是子模块
-                if os.path.exists(os.path.join(SOURCE_DIR, scan_path, "go.mod")):
-                    mod_dirs = [os.path.join(SOURCE_DIR, scan_path)]
-                else:
-                    scan_go_pattern = [scan_path + "/..."]
+                scan_go_pattern = [scan_path + "/..."]
         scan_cmd.extend(scan_go_pattern)
         for cwd in mod_dirs:
             print("govunlncheck 将会分析目录 : ", cwd)
