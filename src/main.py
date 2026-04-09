@@ -141,7 +141,7 @@ class Govulncheck():
                 # 无问题时datas为None
                 if not datas:
                     print("datas is None")
-                    return issues
+                    continue
                 for section in datas.split("\n\n"):
                     if section.find("Example traces found:") != -1:
                         issues.extend(self.__vuln_handle(section, cwd, section.find("Example traces found:")))
